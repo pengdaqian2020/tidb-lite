@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	tidblite "github.com/WangXiangUSTC/tidb-lite"
+	tidblite "github.com/pengdaqian2020/tidb-lite"
 	. "github.com/pingcap/check"
 )
 
