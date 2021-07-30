@@ -33,6 +33,7 @@ func (t *testExampleSuite) TestGetRowCount(c *C) {
 	c.Assert(err, IsNil)
 
 	dbConn, err := tidbServer.CreateConn()
+
 	c.Assert(err, IsNil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -63,13 +63,13 @@ const (
 
 // TiDBServer ...
 type TiDBServer struct {
-	cfg     *config.Config
-	svr     *server.Server
-	storage kv.Storage
-	dom     *domain.Domain
+	Cfg     *config.Config
+	Svr     *server.Server
+	Storage kv.Storage
+	Dom     *domain.Domain
 
-	closeGracefully bool
-	connOpts        string
+	CloseGracefully bool
+	ConnOpts        string
 }
 
 // NewTiDBServer returns a new TiDBServer
