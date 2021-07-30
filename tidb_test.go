@@ -98,7 +98,7 @@ func (t *testTiDBSuite) TestTiDBServer(c *C) {
 	err = tidbServer1.SetDBInfoMetaAndReload([]*model.DBInfo{dbInfo})
 	c.Assert(err, IsNil)
 
-	err = tidbServer.dom.Reload()
+	err = tidbServer.Dom.Reload()
 	c.Assert(err, IsNil)
 
 	_, err = dbConn.Query("use my_db;")

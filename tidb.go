@@ -68,7 +68,7 @@ type TiDBServer struct {
 	Storage kv.Storage
 	Dom     *domain.Domain
 
-	CloseGracefully bool
+	closeGracefully bool
 	ConnOpts        string
 }
 
@@ -93,8 +93,8 @@ func NewTiDBServer(options *Options) (*TiDBServer, error) {
 	}
 
 	tidbServer = &TiDBServer{
-		cfg:      tidbConfig,
-		connOpts: options.ConnOpts,
+		Cfg:      tidbConfig,
+		ConnOpts: options.ConnOpts,
 	}
 
 	if err := tidbServer.registerStores(); err != nil {
@@ -143,10 +143,10 @@ func GetTiDBServer() (*TiDBServer, error) {
 // CreateConn creates a database connection.
 func (t *TiDBServer) CreateConn() (*sql.DB, error) {
 	var dbDSN string
-	if t.cfg.Port != 0 {
-		dbDSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/?%s", "root", "", "127.0.0.1", t.cfg.Port, t.connOpts)
+	if t.Cfg.Port != 0 {
+		dbDSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/?%s", "root", "", "127.0.0.1", t.Cfg.Port, t.ConnOpts)
 	} else {
-		dbDSN = fmt.Sprintf("%s:%s@unix(%s)/?%s", "root", "", t.cfg.Socket, t.connOpts)
+		dbDSN = fmt.Sprintf("%s:%s@unix(%s)/?%s", "root", "", t.Cfg.Socket, t.ConnOpts)
 	}
 
 	var (
@@ -192,16 +192,16 @@ func (t *TiDBServer) registerStores() error {
 }
 
 func (t *TiDBServer) createServer() error {
-	driver := server.NewTiDBDriver(t.storage)
+	driver := server.NewTiDBDriver(t.Storage)
 	var err error
-	t.svr, err = server.NewServer(t.cfg, driver)
+	t.Svr, err = server.NewServer(t.Cfg, driver)
 	if err != nil {
-		// Both domain and storage have started, so we have to clean them before exiting.
+		// Both domain and Storage have started, so we have to clean them before exiting.
 		t.closeDomainAndStorage()
 		return err
 	}
 
-	go t.dom.ExpensiveQueryHandle().SetSessionManager(t.svr).Run()
+	go t.Dom.ExpensiveQueryHandle().SetSessionManager(t.Svr).Run()
 	return nil
 }
 
@@ -212,21 +212,21 @@ func (t *TiDBServer) runServer() error {
 		}
 	}()
 
-	return t.svr.Run()
+	return t.Svr.Run()
 }
 
 func (t *TiDBServer) createStoreAndDomain() error {
-	fullPath := fmt.Sprintf("%s://%s", t.cfg.Store, t.cfg.Path)
+	fullPath := fmt.Sprintf("%s://%s", t.Cfg.Store, t.Cfg.Path)
 	var err error
-	t.storage, err = kvstore.New(fullPath)
+	t.Storage, err = kvstore.New(fullPath)
 	if err != nil {
 		return err
 	}
 	// Bootstrap a session to load information schema.
-	t.dom, err = session.BootstrapSession(t.storage)
+	t.Dom, err = session.BootstrapSession(t.Storage)
 	if err != nil {
-		if err1 := t.storage.Close(); err1 != nil {
-			log.Error("close tidb lite's storage failed", zap.Error(err1))
+		if err1 := t.Storage.Close(); err1 != nil {
+			log.Error("close tidb lite's Storage failed", zap.Error(err1))
 		}
 		return err
 	}
@@ -234,45 +234,45 @@ func (t *TiDBServer) createStoreAndDomain() error {
 }
 
 func (t *TiDBServer) setGlobalVars() error {
-	ddlLeaseDuration := parseDuration(t.cfg.Lease)
+	ddlLeaseDuration := parseDuration(t.Cfg.Lease)
 	session.SetSchemaLease(ddlLeaseDuration)
-	runtime.GOMAXPROCS(int(t.cfg.Performance.MaxProcs))
-	statsLeaseDuration := parseDuration(t.cfg.Performance.StatsLease)
+	runtime.GOMAXPROCS(int(t.Cfg.Performance.MaxProcs))
+	statsLeaseDuration := parseDuration(t.Cfg.Performance.StatsLease)
 	session.SetStatsLease(statsLeaseDuration)
-	bindinfo.Lease = parseDuration(t.cfg.Performance.BindInfoLease)
-	domain.RunAutoAnalyze = t.cfg.Performance.RunAutoAnalyze
-	statistics.FeedbackProbability.Store(t.cfg.Performance.FeedbackProbability)
-	handle.MaxQueryFeedbackCount.Store(int64(t.cfg.Performance.QueryFeedbackLimit))
-	statistics.RatioOfPseudoEstimate.Store(t.cfg.Performance.PseudoEstimateRatio)
-	ddl.RunWorker = t.cfg.RunDDL
-	if t.cfg.SplitTable {
+	bindinfo.Lease = parseDuration(t.Cfg.Performance.BindInfoLease)
+	domain.RunAutoAnalyze = t.Cfg.Performance.RunAutoAnalyze
+	statistics.FeedbackProbability.Store(t.Cfg.Performance.FeedbackProbability)
+	handle.MaxQueryFeedbackCount.Store(int64(t.Cfg.Performance.QueryFeedbackLimit))
+	statistics.RatioOfPseudoEstimate.Store(t.Cfg.Performance.PseudoEstimateRatio)
+	ddl.RunWorker = t.Cfg.RunDDL
+	if t.Cfg.SplitTable {
 		atomic.StoreUint32(&ddl.EnableSplitTableRegion, 1)
 	}
-	plannercore.AllowCartesianProduct.Store(t.cfg.Performance.CrossJoin)
-	privileges.SkipWithGrant = t.cfg.Security.SkipGrantTable
+	plannercore.AllowCartesianProduct.Store(t.Cfg.Performance.CrossJoin)
+	privileges.SkipWithGrant = t.Cfg.Security.SkipGrantTable
 
-	priority := mysql.Str2Priority(t.cfg.Performance.ForcePriority)
+	priority := mysql.Str2Priority(t.Cfg.Performance.ForcePriority)
 	variable.ForcePriority = int32(priority)
 	variable.SysVars[variable.TiDBForcePriority].Value = mysql.Priority2Str[priority]
 
-	variable.SysVars[variable.TIDBMemQuotaQuery].Value = strconv.FormatInt(t.cfg.MemQuotaQuery, 10)
-	variable.SysVars["lower_case_table_names"].Value = strconv.Itoa(t.cfg.LowerCaseTableNames)
+	variable.SysVars[variable.TIDBMemQuotaQuery].Value = strconv.FormatInt(t.Cfg.MemQuotaQuery, 10)
+	variable.SysVars["lower_case_table_names"].Value = strconv.Itoa(t.Cfg.LowerCaseTableNames)
 	variable.SysVars[variable.LogBin].Value = variable.BoolToIntStr(config.GetGlobalConfig().Binlog.Enable)
 
-	variable.SysVars[variable.Port].Value = fmt.Sprintf("%d", t.cfg.Port)
-	variable.SysVars[variable.Socket].Value = t.cfg.Socket
-	variable.SysVars[variable.DataDir].Value = t.cfg.Path
-	variable.SysVars[variable.TiDBSlowQueryFile].Value = t.cfg.Log.SlowQueryFile
+	variable.SysVars[variable.Port].Value = fmt.Sprintf("%d", t.Cfg.Port)
+	variable.SysVars[variable.Socket].Value = t.Cfg.Socket
+	variable.SysVars[variable.DataDir].Value = t.Cfg.Path
+	variable.SysVars[variable.TiDBSlowQueryFile].Value = t.Cfg.Log.SlowQueryFile
 
 	// For CI environment we default enable prepare-plan-cache.
-	plannercore.SetPreparedPlanCache(config.CheckTableBeforeDrop || t.cfg.PreparedPlanCache.Enabled)
+	plannercore.SetPreparedPlanCache(config.CheckTableBeforeDrop || t.Cfg.PreparedPlanCache.Enabled)
 	if plannercore.PreparedPlanCacheEnabled() {
-		plannercore.PreparedPlanCacheCapacity = t.cfg.PreparedPlanCache.Capacity
-		plannercore.PreparedPlanCacheMemoryGuardRatio = t.cfg.PreparedPlanCache.MemoryGuardRatio
+		plannercore.PreparedPlanCacheCapacity = t.Cfg.PreparedPlanCache.Capacity
+		plannercore.PreparedPlanCacheMemoryGuardRatio = t.Cfg.PreparedPlanCache.MemoryGuardRatio
 		if plannercore.PreparedPlanCacheMemoryGuardRatio < 0.0 || plannercore.PreparedPlanCacheMemoryGuardRatio > 1.0 {
 			plannercore.PreparedPlanCacheMemoryGuardRatio = 0.1
 		}
-		plannercore.PreparedPlanCacheMaxMemory.Store(t.cfg.Performance.MaxMemory)
+		plannercore.PreparedPlanCacheMaxMemory.Store(t.Cfg.Performance.MaxMemory)
 		total, err := memory.MemTotal()
 		if err != nil {
 			return err
@@ -282,8 +282,8 @@ func (t *TiDBServer) setGlobalVars() error {
 		}
 	}
 
-	tikv.CommitMaxBackoff = int(parseDuration(t.cfg.TiKVClient.CommitTimeout).Seconds() * 1000)
-	tikv.RegionCacheTTLSec = int64(t.cfg.TiKVClient.RegionCacheTTL)
+	tikv.CommitMaxBackoff = int(parseDuration(t.Cfg.TiKVClient.CommitTimeout).Seconds() * 1000)
+	tikv.RegionCacheTTLSec = int64(t.Cfg.TiKVClient.RegionCacheTTL)
 
 	return nil
 }
@@ -293,34 +293,34 @@ func (t *TiDBServer) serverShutdown(isgraceful bool) {
 	defer mu.Unlock()
 
 	t.closeGracefully = isgraceful
-	t.svr.Close()
+	t.Svr.Close()
 	isClosed = true
 }
 
 func (t *TiDBServer) closeDomainAndStorage() {
 	atomic.StoreUint32(&tikv.ShuttingDown, 1)
-	t.dom.Close()
-	if err := t.storage.Close(); err != nil {
-		log.Error("close tidb lite's storage failed", zap.Error(err))
+	t.Dom.Close()
+	if err := t.Storage.Close(); err != nil {
+		log.Error("close tidb lite's Storage failed", zap.Error(err))
 	}
 }
 
 func (t *TiDBServer) cleanup(graceful bool) {
 	if t.closeGracefully {
-		t.svr.GracefulDown(context.Background(), nil)
+		t.Svr.GracefulDown(context.Background(), nil)
 	} else {
-		t.svr.TryGracefulDown()
+		t.Svr.TryGracefulDown()
 	}
 
 	t.closeDomainAndStorage()
 }
 
 func (t *TiDBServer) setupLog() error {
-	if err := logutil.InitZapLogger(t.cfg.Log.ToLogConfig()); err != nil {
+	if err := logutil.InitZapLogger(t.Cfg.Log.ToLogConfig()); err != nil {
 		return err
 	}
 
-	if err := logutil.InitLogger(t.cfg.Log.ToLogConfig()); err != nil {
+	if err := logutil.InitLogger(t.Cfg.Log.ToLogConfig()); err != nil {
 		return err
 	}
 
@@ -334,7 +334,7 @@ func (t *TiDBServer) setupLog() error {
  */
 
 func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
-	err := kv.RunInNewTxn(t.storage, true, func(txn kv.Transaction) error {
+	err := kv.RunInNewTxn(t.Storage, true, func(txn kv.Transaction) error {
 		t := meta.NewMeta(txn)
 		var err1 error
 		originDBs, err1 := t.ListDatabases()
@@ -353,7 +353,7 @@ func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
 			return nil
 		}
 
-		// store meta in kv storage.
+		// store meta in kv Storage.
 		for _, newDB := range newDBs {
 			if err1 = deleteDBIfExist(newDB); err1 != nil {
 				return errors.Trace(err1)
@@ -389,9 +389,9 @@ func (t *TiDBServer) SetDBInfoMetaAndReload(newDBs []*model.DBInfo) error {
 	if err != nil {
 		return err
 	}
-	return t.dom.Reload()
+	return t.Dom.Reload()
 }
 
 func (t *TiDBServer) GetStorage() kv.Storage {
-	return t.storage
+	return t.Storage
 }
